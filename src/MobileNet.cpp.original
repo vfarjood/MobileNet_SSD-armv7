@@ -1,0 +1,62 @@
+#include <iostream>
+#include <fstream>
+#include <opencv2/opencv.hpp>
+#include <opencv2/dnn.hpp>
+#include <opencv2/dnn/all_layers.hpp>
+
+#include "Timer.hpp"
+
+
+int main(int argc, char** argv )
+{
+    // Load class names:
+    std::vector<std::string> class_names;
+    std::ifstream ifs(std::string("../model/object_detection_classes_coco.txt").c_str());
+    std::string line;
+    while (getline(ifs, line)) {class_names.emplace_back(line);} 
+    
+    // load the neural network model:
+    auto model = cv::dnn::readNet("../model/frozen_inference_graph.pb",
+                                  "../model/ssd_mobilenet_v2_coco_2018_03_29.pbtxt", 
+                                  "TensorFlow");
+    
+    // Load the media:
+    cv::Mat image = cv::imread("../media/sweets.jpg", 1);
+    if(!image.data) 
+    {
+        std::cout << "Error! Unable to find the image file!\n";
+        return -1;
+    }
+
+    // Computation timer:
+    Timer time;
+
+    // create blob from image:
+    cv::Mat input = cv::dnn::blobFromImage(image, 1.0, cv::Size(300, 300), cv::Scalar(127.5, 127.5, 127.5), true, false);
+
+    // set the blob to the model:
+    model.setInput(input);
+
+    // forward pass through the model to carry out the detection:
+    cv::Mat output = model.forward();
+    
+    cv::Mat detectionMat(output.size[2], output.size[3], CV_32F, output.ptr<float>());
+    for (int i = 0; i < detectionMat.rows; i++){
+        int class_id = detectionMat.at<float>(i, 1);
+        float confidence = detectionMat.at<float>(i, 2);
+
+        // Check if the detection is of good quality:
+        if (confidence > 0.5)
+        {
+            int box_x = static_cast<int>(detectionMat.at<float>(i, 3) * image.cols);
+            int box_y = static_cast<int>(detectionMat.at<float>(i, 4) * image.rows);
+            int box_width = static_cast<int>(detectionMat.at<float>(i, 5) * image.cols - box_x);
+            int box_height = static_cast<int>(detectionMat.at<float>(i, 6) * image.rows - box_y);
+            cv::rectangle(image, cv::Point(box_x, box_y), cv::Point(box_x+box_width, box_y+box_height), cv::Scalar(255,255,255), 2);
+            cv::putText(image, class_names[class_id-1].c_str(), cv::Point(box_x, box_y-5), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0,255,255), 1);
+        }
+    }
+    cv::imwrite("../media/output.jpg", image);
+
+    return 0;
+}

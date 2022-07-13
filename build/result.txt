@@ -1,0 +1,21 @@
+Traffic Status: Low
+Number of Cars: 3
+*****************
+ID: 0
+Type: bowl
+Lane Number: 1
+Distance: 0
+Speed: 0
+---------------------
+ID: 1
+Type: cup
+Lane Number: 3
+Distance: 0
+Speed: 0
+---------------------
+ID: 2
+Type: spoon
+Lane Number: 0
+Distance: 0
+Speed: 0
+---------------------

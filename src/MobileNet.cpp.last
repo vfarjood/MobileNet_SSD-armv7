@@ -1,0 +1,127 @@
+#include <iostream>
+#include <fstream>
+#include <vector>
+#include <chrono>
+
+#include <opencv2/opencv.hpp>
+#include <opencv2/dnn.hpp>
+#include <opencv2/dnn/all_layers.hpp>
+
+
+struct Centroid 
+{
+    int id;
+    float conf;
+    cv::Rect box;
+    cv::Point center;
+    std::string name;
+};
+
+
+class Timer
+{
+public:
+    std::chrono::time_point<std::chrono::steady_clock> begin, end;
+    std::chrono::duration<float> duration;
+
+    void start() {begin = std::chrono::steady_clock::now();}
+
+    float stop()
+    {
+        end = std::chrono::steady_clock::now();
+        duration = end - begin; 
+        float second = duration.count();
+        return second;
+    }
+
+};
+
+
+
+int main(int argc, char** argv )
+{
+
+    Timer total_time;
+    total_time.start();
+
+    Timer time;
+    time.start();
+
+    std::vector<Centroid> centroids;
+    centroids.reserve(10);
+
+    // Load class names:
+    std::vector<std::string> class_names;
+    class_names.reserve(100);
+    std::ifstream ifs(std::string("../model/object_detection_classes_coco.txt").c_str());
+    std::string line;
+    while (getline(ifs, line)) {class_names.emplace_back(line);} 
+    
+    // load the neural network model:
+    cv::dnn::Net model = cv::dnn::readNet("../model/frozen_inference_graph.pb",
+                                  "../model/ssd_mobilenet_v2_coco_2018_03_29.pbtxt", 
+                                  "TensorFlow");
+
+    // Load the media:
+    cv::Mat image = cv::imread("../media/sweets.jpg", 1);
+    std::cout << "Loading Time: " << time.stop() << "\n";
+    
+    // create result file:
+    std::ofstream result_file ("result.txt");
+    if (!result_file.is_open())
+    {
+        std::cout << "Unable to open file";
+    }
+
+    time.start();
+
+    // create blob from image:
+    cv::Mat input = cv::dnn::blobFromImage(image, 1.0, cv::Size(300, 300), cv::Scalar(127.5, 127.5, 127.5), true, false);
+
+    // set the blob to the model:
+    model.setInput(input);
+
+    // forward pass through the model to carry out the detection:
+    cv::Mat output = model.forward();
+    
+    cv::Mat detectionMat(output.size[2], output.size[3], CV_32F, output.ptr<float>());
+    for (int i = 0; i < detectionMat.rows; i++){
+
+        float conf = detectionMat.at<float>(i, 2);
+
+        // Check if the detection is of good quality:
+        if (conf > 0.5)
+        {
+            Centroid object;
+
+            object.id         = detectionMat.at<float>(i, 1);
+            object.name       = class_names[object.id-1];
+            object.conf       = detectionMat.at<float>(i, 2);
+            object.box.x      = static_cast<int>(detectionMat.at<float>(i, 3) * image.cols);
+            object.box.y      = static_cast<int>(detectionMat.at<float>(i, 4) * image.rows);
+            object.box.width  = static_cast<int>(detectionMat.at<float>(i, 5) * image.cols - object.box.x);
+            object.box.height = static_cast<int>(detectionMat.at<float>(i, 6) * image.rows - object.box.y);
+            object.center     = cv::Point((object.box.x + object.box.width)/2, (object.box.y + object.box.height)/2);
+            centroids.emplace_back(object);
+        }
+    }
+
+    std::cout << "Computation Time: " << time.stop() << "\n";
+    std::cout << "Total Time: " << total_time.stop() << "\n";
+    std::cout << "Number of detected cars: " << centroids.size() << "\n";
+
+    for(int i=0; i < centroids.size(); i++)
+    {
+        result_file << "name: "  << centroids[i].name << "\n";
+        result_file << "ID: "    << centroids[i].id << "\n";
+        result_file << "conf: "  << centroids[i].conf << "\n";
+        result_file << "center: "<< centroids[i].center << "\n";
+        result_file << "x: "     << centroids[i].box.x << "\n";
+        result_file << "y: "     << centroids[i].box.y << "\n";
+        result_file << "w: "     << centroids[i].box.width  << "\n";
+        result_file << "h: "     << centroids[i].box.height << "\n";
+        result_file << "---------------------" << "\n";
+    }
+
+    return 0;
+}
